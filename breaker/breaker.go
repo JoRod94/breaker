@@ -16,9 +16,9 @@ func (st BreakerState) String() string {
       return "HalfOpen"
     case OpenState:
       return "Open"
+    default:
+      return ""
   }
-
-  return ""
 }
 
 const (
@@ -79,6 +79,7 @@ func NewBreaker(timeout time.Duration, maxFailures int, requiredSuccesses int) *
   }
 }
 
+// Function used to execute external calls. Return types support any interface and must include an error
 func (breaker *Breaker) Run(call func() (interface{}, error)) (interface{}, error) {
   var result interface{}
   var err error
@@ -103,6 +104,7 @@ func (breaker *Breaker) addFailure(result interface{}){
       breaker.mainLock.Lock()
       failures := breaker.counters.addFailure()
       if failures >= breaker.MaxFailures {
+        // Goroutine acquires the lock before the main one unlocks
         go breaker.changeState(OpenState)
       }
       breaker.mainLock.Unlock()
@@ -117,6 +119,7 @@ func (breaker *Breaker) addSuccess(result interface{}){
       breaker.mainLock.Lock()
       successes := breaker.counters.addSuccess()
       if successes >= breaker.RequiredSuccesses {
+        // Goroutine acquires the lock before the main one unlocks
         go breaker.changeState(ClosedState)
       }
       breaker.mainLock.Unlock()
@@ -133,6 +136,7 @@ func (breaker *Breaker) changeState(newState BreakerState) {
       breaker.counters.resetSuccesses()
     case OpenState:
       breaker.counters.resetSuccesses()
+      // Goroutine needed in order to leave changeState
       go breaker.openForTimeout()
   }
   breaker.mainLock.Unlock()
