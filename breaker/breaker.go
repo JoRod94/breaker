@@ -6,9 +6,9 @@ import (
   "errors"
 )
 
-type State int
+type BreakerState int
 
-func (st State) String() string {
+func (st BreakerState) String() string {
   switch(st){
     case ClosedState:
       return "Closed"
@@ -22,9 +22,9 @@ func (st State) String() string {
 }
 
 const (
-  ClosedState State = iota
-  OpenState State = iota
-  HalfOpenState State = iota
+  ClosedState BreakerState = iota
+  OpenState BreakerState = iota
+  HalfOpenState BreakerState = iota
 )
 
 type BreakerCounters struct {
@@ -56,11 +56,11 @@ func (counters *BreakerCounters) resetFailures(){
 }
 
 type Breaker struct {
-  baseTimeout time.Duration
-  maxFailures int
-  requiredSuccesses int
+  BaseTimeout time.Duration
+  MaxFailures int
+  RequiredSuccesses int
 
-  state State
+  State BreakerState
   counters *BreakerCounters
   mainLock *sync.Mutex
 }
@@ -83,7 +83,7 @@ func (breaker *Breaker) Run(call func() (interface{}, error)) (interface{}, erro
   var result interface{}
   var err error
 
-  if breaker.state == ClosedState || breaker.state == HalfOpenState {
+  if breaker.State == ClosedState || breaker.State == HalfOpenState {
     result, err = call()
 
     if(err != nil){
@@ -98,11 +98,11 @@ func (breaker *Breaker) Run(call func() (interface{}, error)) (interface{}, erro
 }
 
 func (breaker *Breaker) addFailure(result interface{}){
-  switch breaker.state {
+  switch breaker.State {
     case ClosedState:
       breaker.mainLock.Lock()
       failures := breaker.counters.addFailure()
-      if failures >= breaker.maxFailures {
+      if failures >= breaker.MaxFailures {
         go breaker.changeState(OpenState)
       }
       breaker.mainLock.Unlock()
@@ -112,20 +112,20 @@ func (breaker *Breaker) addFailure(result interface{}){
 }
 
 func (breaker *Breaker) addSuccess(result interface{}){
-  switch breaker.state {
+  switch breaker.State {
     case HalfOpenState:
       breaker.mainLock.Lock()
       successes := breaker.counters.addSuccess()
-      if successes >= breaker.requiredSuccesses {
+      if successes >= breaker.RequiredSuccesses {
         go breaker.changeState(ClosedState)
       }
       breaker.mainLock.Unlock()
   }
 }
 
-func (breaker *Breaker) changeState(newState State) {
+func (breaker *Breaker) changeState(newState BreakerState) {
   breaker.mainLock.Lock()
-  breaker.state = newState
+  breaker.State = newState
   switch newState {
     case ClosedState:
       breaker.counters.resetAll()
@@ -139,7 +139,7 @@ func (breaker *Breaker) changeState(newState State) {
 }
 
 func (breaker *Breaker) openForTimeout() {
-  time.Sleep(breaker.baseTimeout)
+  time.Sleep(breaker.BaseTimeout)
   breaker.changeState(HalfOpenState)
 }
 
